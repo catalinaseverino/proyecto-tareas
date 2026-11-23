@@ -102,10 +102,10 @@ La primera operación guarda la tarea en PostgreSQL y la segunda la recupera des
 
 ## Red y persistencia
 
-Los dos servicios pertenecen a la red Docker `tareas-net`:
+Los dos servicios pertenecen a la red Docker `proyecto-tareas-entrega2-net`:
 
 ```bash
-docker network inspect tareas-net
+docker network inspect proyecto-tareas-entrega2-net
 ```
 
 PostgreSQL utiliza el volumen `tareas-data` para conservar la información:
