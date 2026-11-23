@@ -34,23 +34,7 @@ pipeline {
         stage('Test') {
             steps {
                 sh 'docker compose up -d --wait'
-                sh '''
-                    docker compose exec -T app python -c '
-                    import json, urllib.request
-                    payload = json.dumps({"titulo": "Prueba Jenkins"}).encode()
-                    request = urllib.request.Request(
-                        "http://localhost:5000/tareas",
-                        data=payload,
-                        headers={"Content-Type": "application/json"},
-                        method="POST",
-                    )
-                    created = json.load(urllib.request.urlopen(request))
-                    assert created["titulo"] == "Prueba Jenkins"
-                    tasks = json.load(urllib.request.urlopen("http://localhost:5000/tareas"))
-                    assert any(task["titulo"] == "Prueba Jenkins" for task in tasks)
-                    print("Integración app -> PostgreSQL: OK")
-                    '
-                '''
+                sh '''docker compose exec -T app python -c 'import json, urllib.request; payload=json.dumps({"titulo":"Prueba Jenkins"}).encode(); request=urllib.request.Request("http://localhost:5000/tareas", data=payload, headers={"Content-Type":"application/json"}, method="POST"); created=json.load(urllib.request.urlopen(request)); assert created["titulo"] == "Prueba Jenkins"; tasks=json.load(urllib.request.urlopen("http://localhost:5000/tareas")); assert any(task["titulo"] == "Prueba Jenkins" for task in tasks); print("Integración app -> PostgreSQL: OK")' '''
             }
         }
     }
