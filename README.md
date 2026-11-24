@@ -1,54 +1,69 @@
-# Proyecto Tareas
+# Proyecto Tareas — Entrega 2
 
-Aplicación para gestionar tareas mediante una API desarrollada con Python y Flask, conectada a PostgreSQL. Docker Compose ejecuta ambos componentes como servicios independientes dentro de una red Docker propia.
+Aplicación web para gestionar tareas mediante una API desarrollada con Python y Flask. La aplicación utiliza PostgreSQL como segundo servicio y se ejecuta con Docker Compose. En esta entrega se integra Jenkins como gestor del pipeline de integración continua.
 
-## Servicios
+## Repositorio
+
+Repositorio oficial de esta entrega:
+
+<https://github.com/catalinaseverino/proyecto-tareas>
+
+## Arquitectura
+
+La solución está compuesta por:
 
 - `app`: API Flask que recibe las solicitudes HTTP y administra las tareas.
 - `db`: PostgreSQL 16.6, encargado de almacenar las tareas.
+- `jenkins`: servidor Jenkins utilizado para ejecutar el pipeline de integración continua.
 
-La aplicación se conecta a PostgreSQL mediante el nombre interno del servicio `db`, no mediante `localhost` ni una dirección IP fija.
+La aplicación se conecta a PostgreSQL mediante el nombre interno del servicio `db`, no mediante `localhost` ni una dirección IP fija. Ambos servicios de la aplicación se comunican dentro de la red Docker `tareas-net`.
 
 ## Estructura del repositorio
 
 ```text
-proyecto-tareas/
+proyecto-tareas-entrega2/
 ├── app/
 │   ├── Dockerfile
+│   ├── __init__.py
 │   ├── app.py
 │   └── database.py
 ├── tests/
 │   └── test_app.py
-├── .github/
-│   └── workflows/
-│       └── ci.yml
+├── jenkins/
+│   └── Dockerfile
+├── .github/workflows/ci.yml
 ├── .dockerignore
 ├── .env.example
 ├── .gitignore
 ├── docker-compose.yml
+├── docker-compose.jenkins.yml
+├── Jenkinsfile
+├── docs/
+│   ├── arquitectura-entrega2.svg
+│   ├── estructura-jenkins.svg
+│   └── estructura-repositorio.svg
 ├── requirements.txt
 └── README.md
 ```
 
-PostgreSQL utiliza directamente la imagen oficial `postgres:16.6-alpine`, por lo que no necesita una carpeta propia dentro del repositorio.
+PostgreSQL utiliza directamente la imagen oficial `postgres:16.6-alpine`, por lo que no necesita una carpeta propia dentro del repositorio. Jenkins se construye a partir de `jenkins/Dockerfile` y utiliza un volumen para conservar su configuración.
 
 ## Requisitos
 
-- Docker Desktop.
-- Docker Compose v2.
+- Docker Desktop con Docker Compose v2.
 - Git.
+- Para ejecutar pruebas locales fuera de Docker: Python 3.12 o compatible.
+- Para administrar Jenkins: un navegador web.
 
-## Configuración
+## Ejecutar la aplicación con Docker
 
-Crear el archivo local de variables de entorno:
+Desde la carpeta raíz del repositorio:
 
 ```bash
 cp .env.example .env
 ```
 
-El archivo `.env` contiene la configuración local y no se sube al repositorio. El archivo `.env.example` documenta las variables necesarias sin incluir credenciales reales.
-
-## Ejecutar con Docker
+Edite `.env` y defina una contraseña local. Este archivo no se sube al repositorio porque está incluido en `.gitignore`.
 
 Construir las imágenes:
 
@@ -56,10 +71,10 @@ Construir las imágenes:
 docker compose build
 ```
 
-Levantar los servicios:
+Levantar los servicios y esperar a que estén saludables:
 
 ```bash
-docker compose up -d
+docker compose up -d --wait
 ```
 
 Consultar el estado:
@@ -68,9 +83,15 @@ Consultar el estado:
 docker compose ps
 ```
 
-La aplicación estará disponible en `http://localhost:5000`. Si ese puerto está ocupado, cambia `APP_PORT` en `.env`, por ejemplo a `5001`.
+La API estará disponible en `http://localhost:5000`. Si el puerto 5000 está ocupado, configure otro puerto externo en `.env`, por ejemplo:
 
-## Endpoints
+```env
+APP_PORT=5001
+```
+
+El puerto interno de la aplicación continúa siendo el 5000. Para acceder con el puerto alternativo se usaría `http://localhost:5001`.
+
+## Endpoints de la API
 
 | Método | Endpoint | Descripción |
 |---|---|---|
@@ -82,41 +103,33 @@ La aplicación estará disponible en `http://localhost:5000`. Si ese puerto est�
 
 ## Prueba de comunicación entre contenedores
 
-La aplicación Flask se conecta a PostgreSQL usando el nombre de servicio `db`, definido en `docker-compose.yml`. Docker resuelve ese nombre dentro de la red `tareas-net`.
+La siguiente prueba demuestra una operación real de ida y vuelta: el `POST` guarda una tarea en PostgreSQL y el `GET` la recupera. La aplicación utiliza `db` como host de PostgreSQL dentro de Docker.
 
-Crear una tarea:
+Con el puerto externo predeterminado:
 
 ```bash
 curl -X POST http://localhost:5000/tareas \
   -H "Content-Type: application/json" \
   -d '{"titulo":"Prueba de comunicación"}'
-```
 
-Consultar las tareas:
-
-```bash
 curl http://localhost:5000/tareas
 ```
 
-La primera operación guarda la tarea en PostgreSQL y la segunda la recupera desde la base de datos. Si se utiliza otro puerto externo, reemplaza `5000` por el valor configurado en `APP_PORT`.
+Si configuró `APP_PORT=5001`, reemplace `5000` por `5001` en los comandos.
 
-## Red y persistencia
-
-Los dos servicios pertenecen a la red Docker `tareas-net`:
+También puede comprobar la red creada por Compose:
 
 ```bash
 docker network inspect tareas-net
 ```
 
-PostgreSQL utiliza el volumen `tareas-data` para conservar la información:
+En la salida deben aparecer los contenedores `proyecto-tareas-app` y `proyecto-tareas-db`.
 
-```bash
-docker volume ls
-```
+## Persistencia y limpieza
 
-## Detener y limpiar los servicios
+PostgreSQL utiliza el volumen `tareas-data` para conservar las tareas aunque se eliminen los contenedores.
 
-Detener y eliminar los contenedores, conservando los datos:
+Detener los contenedores y conservar los datos:
 
 ```bash
 docker compose down
@@ -125,29 +138,111 @@ docker compose down
 Detener los contenedores y eliminar también el volumen y los datos:
 
 ```bash
-docker compose down -v
+docker compose down -v --remove-orphans
 ```
 
 ## Pruebas locales
 
+Para ejecutar las pruebas unitarias directamente en el entorno Python:
+
 ```bash
+pip install -r requirements.txt
 python -m pytest
 ```
 
-## Integración continua
+Las pruebas están en `tests/test_app.py`.
 
-GitHub Actions se ejecuta en cada `push` y `pull_request`. El pipeline:
+## Jenkins
 
-1. Instala las dependencias.
+Jenkins se ejecuta en un contenedor independiente, con Docker CLI y Docker Compose disponibles para construir y probar los servicios del proyecto. El volumen `jenkins_home` conserva la configuración, los plugins, los jobs y las credenciales de Jenkins.
+
+Construir la imagen personalizada de Jenkins:
+
+```bash
+docker compose -f docker-compose.jenkins.yml build
+```
+
+Levantar Jenkins:
+
+```bash
+docker compose -f docker-compose.jenkins.yml up -d
+```
+
+Abrir Jenkins en el navegador:
+
+<http://localhost:8080>
+
+Consultar los logs si se necesita obtener la contraseña inicial o revisar el arranque:
+
+```bash
+docker compose -f docker-compose.jenkins.yml logs -f jenkins
+```
+
+Detener Jenkins sin borrar su configuración:
+
+```bash
+docker compose -f docker-compose.jenkins.yml down
+```
+
+### Configuración del job
+
+El job de Jenkins se configura como `Pipeline` y utiliza el pipeline definido en el archivo `Jenkinsfile` del repositorio:
+
+- Repositorio: `https://github.com/catalinaseverino/proyecto-tareas.git`.
+- Rama: `*/main`.
+- Script Path: `Jenkinsfile`.
+- Credencial de GitHub: guardada en Jenkins, no escrita en el código.
+- Disparador: `Poll SCM` con la expresión `H/2 * * * *`.
+
+El disparador revisa periódicamente el repositorio y ejecuta el pipeline cuando detecta un nuevo commit. También se puede usar un webhook de GitHub si Jenkins está disponible desde Internet.
+
+### Etapas del pipeline
+
+El archivo `Jenkinsfile` contiene las siguientes etapas:
+
+1. **Checkout:** descarga el código desde GitHub.
+2. **Build:** construye la imagen de la aplicación y prepara la imagen oficial de PostgreSQL mediante `docker compose build`.
+3. **Test:** levanta los servicios, espera sus estados saludables y ejecuta una prueba automática POST/GET.
+
+La prueba de integración se ejecuta dentro del contenedor `app`. Crea una tarea mediante la API y luego la consulta para verificar que la información fue guardada y recuperada desde PostgreSQL. Si la comunicación falla, el build falla.
+
+El bloque `post` ejecuta siempre:
+
+```groovy
+docker compose down -v --remove-orphans
+```
+
+Así se limpian los contenedores y volúmenes temporales al finalizar cada build.
+
+### Credenciales de Jenkins
+
+Las credenciales se almacenan desde **Manage Jenkins → Credentials**:
+
+- Credencial de GitHub para descargar el repositorio.
+- Credencial secreta `postgres-ci-password` para la contraseña usada durante el pipeline.
+
+Ninguna contraseña o token real se incluye en el repositorio.
+
+## GitHub Actions
+
+El workflow `.github/workflows/ci.yml` se conserva como verificación adicional y se ejecuta en cada `push` y `pull_request`. Realiza las siguientes acciones:
+
+1. Instala las dependencias de Python.
 2. Ejecuta las pruebas unitarias.
 3. Construye las imágenes Docker.
-4. Levanta Flask y PostgreSQL.
-5. Ejecuta una prueba POST/GET.
-6. Verifica que la tarea creada pueda recuperarse.
+4. Levanta la aplicación y PostgreSQL.
+5. Ejecuta la prueba POST/GET de comunicación.
+6. Muestra los logs si la integración falla.
 7. Detiene y limpia los servicios.
 
-El workflow está definido en `.github/workflows/ci.yml`.
+La entrega se centra en Jenkins, pero GitHub Actions permite mantener una segunda validación automática del proyecto.
 
-## Repositorio
+## Seguridad y buenas prácticas
 
-https://github.com/cseverinog/proyecto-tareas
+- Las imágenes utilizan versiones explícitas; no se usa `latest`.
+- `.dockerignore` evita incluir archivos innecesarios en la imagen.
+- `.env` está excluido del repositorio mediante `.gitignore`.
+- `.env.example` documenta las variables necesarias sin exponer secretos reales.
+- Las credenciales de GitHub y PostgreSQL se almacenan en Jenkins.
+- La comunicación entre la aplicación y la base de datos utiliza el nombre de servicio `db` dentro de la red Docker.
+
